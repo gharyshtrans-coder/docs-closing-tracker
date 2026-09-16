@@ -153,7 +153,7 @@ const server = http.createServer(async (req, res) => {
         dueDate: body.dueDate || '',
         paid: false,
         paidDate: null,
-        files: { avr: null, esf: null }, // сюда попадут имена загруженных файлов
+        files: { invoice: null, avr: null, esf: null }, // сюда попадут имена загруженных файлов
       };
       invoices.push(invoice);
       writeInvoices(invoices);
@@ -183,7 +183,7 @@ const server = http.createServer(async (req, res) => {
       const invoices = readInvoices();
       const inv = invoices.find(i => i.id === id);
       if (!inv) return sendJson(res, 404, { error: 'Счёт не найден' });
-      if (!['avr', 'esf'].includes(body.type)) return sendJson(res, 400, { error: 'Неверный тип документа' });
+      if (!['avr', 'esf', 'invoice'].includes(body.type)) return sendJson(res, 400, { error: 'Неверный тип документа' });
 
       const safeName = `${id}_${body.type}_${Date.now()}_${(body.filename || 'file').replace(/[^a-zA-Zа-яА-Я0-9._-]/g, '_')}`;
       const filePath = path.join(UPLOADS_DIR, safeName);

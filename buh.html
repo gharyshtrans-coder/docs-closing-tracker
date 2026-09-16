@@ -32,6 +32,7 @@
             <th>Клиент</th>
             <th>Сумма</th>
             <th>Статус</th>
+            <th>Счёт</th>
             <th>АВР</th>
             <th>ЭСФ</th>
           </tr>
@@ -159,6 +160,7 @@
           <td>${inv.client}</td>
           <td>${inv.amount.toLocaleString('ru-RU')} тг</td>
           <td>${statusBadge(inv)}</td>
+          ${fileCell(inv, 'invoice')}
           ${fileCell(inv, 'avr')}
           ${fileCell(inv, 'esf')}
         `;

@@ -23,6 +23,7 @@
             <th>Счёт от</th>
             <th>Срок до</th>
             <th>Статус</th>
+            <th>Счёт</th>
             <th>Документы</th>
             <th></th>
           </tr>
@@ -102,6 +103,7 @@
           <td>${inv.issuedDate}</td>
           <td>${inv.dueDate || '—'}</td>
           <td>${statusBadge(inv)}</td>
+          <td>${fileLink(inv, 'invoice', 'Счёт')}</td>
           <td>${fileLink(inv, 'avr', 'АВР')} ${fileLink(inv, 'esf', 'ЭСФ')}</td>
           <td>${inv.paid ? '' : `<button class="small-btn" onclick="markPaid(${inv.id})">Отметить оплату</button>`}</td>
         `;
