@@ -21,7 +21,10 @@
         <input id="amount" type="number" placeholder="Сумма, тг">
         <input id="dueDate" type="date" placeholder="Срок оплаты">
       </div>
-      <button class="btn" style="width:auto; padding:10px 24px;" onclick="createInvoice()">Выставить счёт</button>
+      <div class="form-row">
+        <input id="invoiceFile" type="file">
+      </div>
+      <button class="btn" style="width:auto; padding:10px 24px;" onclick="createInvoice()">Загрузить счёт</button>
       <p id="createError" class="error"></p>
     </div>
 
@@ -91,6 +94,8 @@
       const client = document.getElementById('client').value.trim();
       const amount = document.getElementById('amount').value;
       const dueDate = document.getElementById('dueDate').value;
+      const fileInput = document.getElementById('invoiceFile');
+      const file = fileInput.files[0];
       const errorEl = document.getElementById('createError');
       errorEl.textContent = '';
 
@@ -98,11 +103,17 @@
         errorEl.textContent = 'Заполните клиента и сумму';
         return;
       }
+      if (!file) {
+        errorEl.textContent = 'Прикрепите файл счёта';
+        return;
+      }
+
+      const invoiceFileBase64 = await fileToBase64(file);
 
       const resp = await fetch('/api/invoices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Pin': pin },
-        body: JSON.stringify({ client, amount, dueDate }),
+        body: JSON.stringify({ client, amount, dueDate, invoiceFileBase64, invoiceFileName: file.name }),
       });
       if (!resp.ok) {
         const data = await resp.json();
@@ -112,6 +123,7 @@
       document.getElementById('client').value = '';
       document.getElementById('amount').value = '';
       document.getElementById('dueDate').value = '';
+      fileInput.value = '';
       load();
     }
 
@@ -138,6 +150,9 @@
 
     function fileCell(inv, type) {
       const name = inv.files && inv.files[type];
+      if (type === 'invoice') {
+        return `<td>${name ? `<a class="file-link" href="/api/files/${name}?pin=${pin}" target="_blank">Открыть</a>` : '—'}</td>`;
+      }
       const link = name
         ? `<a class="file-link" href="/api/files/${name}?pin=${pin}" target="_blank">Открыть</a>`
         : '';

@@ -144,17 +144,27 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/api/invoices' && req.method === 'POST') {
       if (!checkRole(req, 'buh')) return sendJson(res, 403, { error: 'Только бухгалтер может выставлять счета' });
       const body = await readBody(req);
+      if (!body.invoiceFileBase64) return sendJson(res, 400, { error: 'Прикрепите файл счёта' });
+
       const invoices = readInvoices();
+      const id = nextId(invoices);
       const invoice = {
-        id: nextId(invoices),
+        id,
         client: body.client || 'Без названия',
         amount: Number(body.amount) || 0,
         issuedDate: new Date().toISOString().slice(0, 10),
         dueDate: body.dueDate || '',
         paid: false,
         paidDate: null,
-        files: { invoice: null, avr: null, esf: null }, // сюда попадут имена загруженных файлов
+        files: { invoice: null, avr: null, esf: null },
       };
+
+      const safeName = `${id}_invoice_${Date.now()}_${(body.invoiceFileName || 'file').replace(/[^a-zA-Zа-яА-Я0-9._-]/g, '_')}`;
+      const filePath = path.join(UPLOADS_DIR, safeName);
+      const base64Data = body.invoiceFileBase64.split(',').pop();
+      fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'));
+      invoice.files.invoice = safeName;
+
       invoices.push(invoice);
       writeInvoices(invoices);
       return sendJson(res, 200, invoice);
