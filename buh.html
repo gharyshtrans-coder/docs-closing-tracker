@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Счета — Бухгалтер</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="topbar">
+    <h1>Выставление счетов</h1>
+    <span class="logout" onclick="logout()">Выйти</span>
+  </div>
+
+  <div class="container">
+    <div id="alertBanner" class="alert-banner"></div>
+    <div class="card">
+      <h3 style="margin-top:0;">Новый счёт</h3>
+      <div class="form-row">
+        <input id="client" placeholder="Название клиента">
+        <input id="amount" type="number" placeholder="Сумма, тг">
+        <input id="dueDate" type="date" placeholder="Срок оплаты">
+      </div>
+      <button class="btn" style="width:auto; padding:10px 24px;" onclick="createInvoice()">Выставить счёт</button>
+      <p id="createError" class="error"></p>
+    </div>
+
+    <div class="card">
+      <table>
+        <thead>
+          <tr>
+            <th>Клиент</th>
+            <th>Сумма</th>
+            <th>Статус</th>
+            <th>АВР</th>
+            <th>ЭСФ</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <p id="empty" style="display:none; color:#78716c; padding:20px 0; text-align:center;">Пока нет ни одного счёта.</p>
+    </div>
+  </div>
+
+  <script>
+    const pin = localStorage.getItem('pin');
+    const role = localStorage.getItem('role');
+    if (role !== 'buh') window.location.href = '/login.html';
+
+    function logout() {
+      localStorage.clear();
+      window.location.href = '/login.html';
+    }
+
+    function daysLeft(dueDate) {
+      if (!dueDate) return null;
+      const diffMs = new Date(dueDate) - new Date(new Date().toDateString());
+      return Math.round(diffMs / (1000 * 60 * 60 * 24));
+    }
+
+    function statusBadge(inv) {
+      if (inv.paid) return '<span class="badge paid">Оплачен</span>';
+      const d = daysLeft(inv.dueDate);
+      if (d !== null && d < 0) return '<span class="badge overdue">Просрочен</span>';
+      if (d !== null && d <= 3) return `<span class="badge soon">⚠ Осталось ${d} дн.</span>`;
+      return '<span class="badge unpaid">Ожидает оплаты</span>';
+    }
+
+    function updateBanner(invoices) {
+      const urgent = invoices.filter(i => {
+        if (i.paid) return false;
+        const d = daysLeft(i.dueDate);
+        return d !== null && d <= 3;
+      });
+      const banner = document.getElementById('alertBanner');
+      if (urgent.length === 0) {
+        banner.style.display = 'none';
+        return;
+      }
+      const overdueCount = urgent.filter(i => daysLeft(i.dueDate) < 0).length;
+      const soonCount = urgent.length - overdueCount;
+      const parts = [];
+      if (overdueCount) parts.push(`просрочено — ${overdueCount}`);
+      if (soonCount) parts.push(`истекает в течение 3 дней — ${soonCount}`);
+      banner.textContent = '⚠ Требуют внимания: ' + parts.join(', ');
+      banner.style.display = 'block';
+    }
+
+    async function createInvoice() {
+      const client = document.getElementById('client').value.trim();
+      const amount = document.getElementById('amount').value;
+      const dueDate = document.getElementById('dueDate').value;
+      const errorEl = document.getElementById('createError');
+      errorEl.textContent = '';
+
+      if (!client || !amount) {
+        errorEl.textContent = 'Заполните клиента и сумму';
+        return;
+      }
+
+      const resp = await fetch('/api/invoices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Pin': pin },
+        body: JSON.stringify({ client, amount, dueDate }),
+      });
+      if (!resp.ok) {
+        const data = await resp.json();
+        errorEl.textContent = data.error || 'Ошибка';
+        return;
+      }
+      document.getElementById('client').value = '';
+      document.getElementById('amount').value = '';
+      document.getElementById('dueDate').value = '';
+      load();
+    }
+
+    function fileToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    async function uploadFile(id, type, inputEl) {
+      const file = inputEl.files[0];
+      if (!file) return;
+      const dataBase64 = await fileToBase64(file);
+      await fetch(`/api/invoices/${id}/upload`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Pin': pin },
+        body: JSON.stringify({ type, filename: file.name, dataBase64 }),
+      });
+      load();
+    }
+
+    function fileCell(inv, type) {
+      const name = inv.files && inv.files[type];
+      const link = name
+        ? `<a class="file-link" href="/api/files/${name}?pin=${pin}" target="_blank">Открыть</a>`
+        : '';
+      return `<td>${link}<input type="file" onchange="uploadFile(${inv.id}, '${type}', this)"></td>`;
+    }
+
+    async function load() {
+      const resp = await fetch('/api/invoices', { headers: { 'X-Pin': pin } });
+      if (!resp.ok) { window.location.href = '/login.html'; return; }
+      const invoices = await resp.json();
+      const rows = document.getElementById('rows');
+      const empty = document.getElementById('empty');
+      rows.innerHTML = '';
+      empty.style.display = invoices.length ? 'none' : 'block';
+      updateBanner(invoices);
+
+      invoices.sort((a, b) => b.id - a.id).forEach(inv => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${inv.client}</td>
+          <td>${inv.amount.toLocaleString('ru-RU')} тг</td>
+          <td>${statusBadge(inv)}</td>
+          ${fileCell(inv, 'avr')}
+          ${fileCell(inv, 'esf')}
+        `;
+        rows.appendChild(tr);
+      });
+    }
+
+    load();
+    setInterval(load, 15000);
+  </script>
+</body>
+</html>

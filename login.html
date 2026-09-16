@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Вход — Реестр закрытия документов</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="login-box">
+    <h1>Реестр закрытия документов</h1>
+    <p>Введите свой PIN-код для входа</p>
+    <input type="password" id="pin" placeholder="PIN" inputmode="numeric" autofocus>
+    <button onclick="login()">Войти</button>
+    <p id="error" class="error"></p>
+  </div>
+
+  <script>
+    async function login() {
+      const pin = document.getElementById('pin').value.trim();
+      const errorEl = document.getElementById('error');
+      errorEl.textContent = '';
+      if (!pin) return;
+
+      try {
+        const resp = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pin }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+          errorEl.textContent = data.error || 'Ошибка входа';
+          return;
+        }
+        // Сохраняем роль и PIN в этом браузере
+        localStorage.setItem('role', data.role);
+        localStorage.setItem('pin', pin);
+        if (data.role === 'bolat') {
+          window.location.href = '/bolat.html';
+        } else {
+          window.location.href = '/buh.html';
+        }
+      } catch (e) {
+        errorEl.textContent = 'Не удалось связаться с сервером';
+      }
+    }
+
+    document.getElementById('pin').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') login();
+    });
+  </script>
+</body>
+</html>

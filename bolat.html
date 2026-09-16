@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Счета — Болат</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="topbar">
+    <h1>Счета клиентов</h1>
+    <span class="logout" onclick="logout()">Выйти</span>
+  </div>
+
+  <div class="container">
+    <div id="alertBanner" class="alert-banner"></div>
+    <div class="card">
+      <table>
+        <thead>
+          <tr>
+            <th>Клиент</th>
+            <th>Сумма</th>
+            <th>Счёт от</th>
+            <th>Срок до</th>
+            <th>Статус</th>
+            <th>Документы</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <p id="empty" style="display:none; color:#78716c; padding:20px 0; text-align:center;">Пока нет ни одного счёта. Их добавляет бухгалтер.</p>
+    </div>
+  </div>
+
+  <script>
+    const pin = localStorage.getItem('pin');
+    const role = localStorage.getItem('role');
+    if (role !== 'bolat') window.location.href = '/login.html';
+
+    function logout() {
+      localStorage.clear();
+      window.location.href = '/login.html';
+    }
+
+    function daysLeft(dueDate) {
+      if (!dueDate) return null;
+      const diffMs = new Date(dueDate) - new Date(new Date().toDateString());
+      return Math.round(diffMs / (1000 * 60 * 60 * 24));
+    }
+
+    function statusBadge(inv) {
+      if (inv.paid) return '<span class="badge paid">Оплачен</span>';
+      const d = daysLeft(inv.dueDate);
+      if (d !== null && d < 0) return '<span class="badge overdue">Просрочен</span>';
+      if (d !== null && d <= 3) return `<span class="badge soon">⚠ Осталось ${d} дн.</span>`;
+      return '<span class="badge unpaid">Ожидает оплаты</span>';
+    }
+
+    function updateBanner(invoices) {
+      const urgent = invoices.filter(i => {
+        if (i.paid) return false;
+        const d = daysLeft(i.dueDate);
+        return d !== null && d <= 3;
+      });
+      const banner = document.getElementById('alertBanner');
+      if (urgent.length === 0) {
+        banner.style.display = 'none';
+        return;
+      }
+      const overdueCount = urgent.filter(i => daysLeft(i.dueDate) < 0).length;
+      const soonCount = urgent.length - overdueCount;
+      let text = '⚠ Требуют внимания: ';
+      const parts = [];
+      if (overdueCount) parts.push(`просрочено — ${overdueCount}`);
+      if (soonCount) parts.push(`истекает в течение 3 дней — ${soonCount}`);
+      banner.textContent = text + parts.join(', ');
+      banner.style.display = 'block';
+    }
+
+    function fileLink(inv, type, label) {
+      const name = inv.files && inv.files[type];
+      if (name) return `<a class="file-link" href="/api/files/${name}?pin=${pin}" target="_blank">${label}</a>`;
+      return `<span class="file-missing">${label} нет</span>`;
+    }
+
+    async function load() {
+      const resp = await fetch('/api/invoices', { headers: { 'X-Pin': pin } });
+      if (!resp.ok) { window.location.href = '/login.html'; return; }
+      const invoices = await resp.json();
+      const rows = document.getElementById('rows');
+      const empty = document.getElementById('empty');
+      rows.innerHTML = '';
+      empty.style.display = invoices.length ? 'none' : 'block';
+      updateBanner(invoices);
+
+      invoices.sort((a, b) => b.id - a.id).forEach(inv => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${inv.client}</td>
+          <td>${inv.amount.toLocaleString('ru-RU')} тг</td>
+          <td>${inv.issuedDate}</td>
+          <td>${inv.dueDate || '—'}</td>
+          <td>${statusBadge(inv)}</td>
+          <td>${fileLink(inv, 'avr', 'АВР')} ${fileLink(inv, 'esf', 'ЭСФ')}</td>
+          <td>${inv.paid ? '' : `<button class="small-btn" onclick="markPaid(${inv.id})">Отметить оплату</button>`}</td>
+        `;
+        rows.appendChild(tr);
+      });
+    }
+
+    async function markPaid(id) {
+      await fetch(`/api/invoices/${id}/pay`, { method: 'POST', headers: { 'X-Pin': pin } });
+      load();
+    }
+
+    load();
+    setInterval(load, 15000); // обновляем список каждые 15 секунд
+  </script>
+</body>
+</html>
