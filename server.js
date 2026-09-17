@@ -148,12 +148,15 @@ const server = http.createServer(async (req, res) => {
 
       const invoices = readInvoices();
       const id = nextId(invoices);
+      const issuedDate = new Date();
+      const dueDateObj = new Date(issuedDate);
+      dueDateObj.setDate(dueDateObj.getDate() + 15);
       const invoice = {
         id,
         client: body.client || 'Без названия',
         amount: Number(body.amount) || 0,
-        issuedDate: new Date().toISOString().slice(0, 10),
-        dueDate: body.dueDate || '',
+        issuedDate: issuedDate.toISOString().slice(0, 10),
+        dueDate: dueDateObj.toISOString().slice(0, 10),
         paid: false,
         paidDate: null,
         files: { invoice: null, avr: null, esf: null },
