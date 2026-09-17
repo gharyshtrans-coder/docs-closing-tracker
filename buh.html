@@ -17,12 +17,13 @@
     <div class="card">
       <h3 style="margin-top:0;">Новый счёт</h3>
       <div class="form-row">
-        <input id="client" placeholder="Название клиента (необязательно)">
+        <input id="client" placeholder="Название клиента">
         <input id="amount" type="number" placeholder="Сумма, тг">
       </div>
       <div class="form-row">
-        <input id="invoiceFile" type="file">
+        <input id="invoiceFile" type="file" accept="application/pdf" onchange="tryExtract(this)">
       </div>
+      <p id="extractHint" style="font-family:-apple-system,sans-serif; font-size:12.5px; color:#78716c; min-height:16px; margin:0 0 10px;"></p>
       <button class="btn" style="width:auto; padding:10px 24px;" onclick="createInvoice()">Загрузить счёт</button>
       <p id="createError" class="error"></p>
     </div>
@@ -89,6 +90,34 @@
       banner.style.display = 'block';
     }
 
+    async function tryExtract(inputEl) {
+      const file = inputEl.files[0];
+      const hint = document.getElementById('extractHint');
+      hint.textContent = '';
+      if (!file) return;
+
+      hint.textContent = 'Читаю файл...';
+      try {
+        const fileBase64 = await fileToBase64(file);
+        const resp = await fetch('/api/extract-invoice-info', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Pin': pin },
+          body: JSON.stringify({ fileBase64 }),
+        });
+        const info = await resp.json();
+        let filled = [];
+        const clientInput = document.getElementById('client');
+        const amountInput = document.getElementById('amount');
+        if (info.client && !clientInput.value) { clientInput.value = info.client; filled.push('клиент'); }
+        if (info.amount && !amountInput.value) { amountInput.value = info.amount; filled.push('сумма'); }
+        hint.textContent = filled.length
+          ? `Автоматически подставлено: ${filled.join(', ')}. Проверьте перед отправкой.`
+          : 'Не удалось распознать данные — заполните вручную.';
+      } catch (e) {
+        hint.textContent = 'Не удалось распознать данные — заполните вручную.';
+      }
+    }
+
     async function createInvoice() {
       const client = document.getElementById('client').value.trim();
       const amount = document.getElementById('amount').value;
@@ -97,8 +126,8 @@
       const errorEl = document.getElementById('createError');
       errorEl.textContent = '';
 
-      if (!amount) {
-        errorEl.textContent = 'Укажите сумму';
+      if (!client || !amount) {
+        errorEl.textContent = 'Заполните клиента и сумму';
         return;
       }
       if (!file) {

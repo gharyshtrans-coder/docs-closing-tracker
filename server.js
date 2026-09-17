@@ -9,6 +9,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const url = require('url');
+const { PDFParse } = require('pdf-parse');
 
 const PORT = process.env.PORT || 3000;
 
@@ -111,7 +112,30 @@ function serveStatic(req, res, pathname) {
   });
 }
 
-// ---------- Проверка PIN на защищённых запросах ----------
+// ---------- Извлечение имени клиента и суммы из текста PDF-счёта ----------
+function extractInvoiceInfo(text) {
+  let client = null;
+  let amount = null;
+
+  const clientMatch = text.match(/(?:Покупатель|Плательщик|Заказчик)[:\s]+([^\n\r]+)/i);
+  if (clientMatch) {
+    client = clientMatch[1].trim().replace(/\s{2,}/g, ' ').slice(0, 120);
+  }
+
+  const amountRegex = /(?:Итого к оплате|Всего к оплате|К оплате|Сумма к оплате|Итого)[^\d]{0,25}([\d\s]{2,}(?:[.,]\d{1,2})?)/gi;
+  let m;
+  let lastAmount = null;
+  while ((m = amountRegex.exec(text)) !== null) {
+    const raw = m[1].replace(/\s/g, '').replace(',', '.');
+    const val = parseFloat(raw);
+    if (!isNaN(val) && val > 0) lastAmount = val;
+  }
+  amount = lastAmount;
+
+  return { client, amount };
+}
+
+
 function checkRole(req, requiredRole, queryPin) {
   const pin = req.headers['x-pin'] || queryPin;
   const role = PINS[pin];
@@ -138,6 +162,23 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/api/invoices' && req.method === 'GET') {
       if (!checkRole(req)) return sendJson(res, 401, { error: 'Нет доступа' });
       return sendJson(res, 200, readInvoices());
+    }
+
+    // ---- Распознать клиента и сумму из PDF-счёта (только бухгалтер) ----
+    if (pathname === '/api/extract-invoice-info' && req.method === 'POST') {
+      if (!checkRole(req, 'buh')) return sendJson(res, 403, { error: 'Нет доступа' });
+      const body = await readBody(req);
+      const base64Data = (body.fileBase64 || '').split(',').pop();
+      try {
+        const buffer = Buffer.from(base64Data, 'base64');
+        const parser = new PDFParse({ data: buffer });
+        const parsed = await parser.getText();
+        const info = extractInvoiceInfo(parsed.text || '');
+        return sendJson(res, 200, info);
+      } catch (e) {
+        // Если файл не PDF или не распознался — просто ничего не подставляем
+        return sendJson(res, 200, { client: null, amount: null });
+      }
     }
 
     // ---- Создать новый счёт (только бухгалтер) ----
